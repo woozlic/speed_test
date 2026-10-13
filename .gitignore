@@ -11,3 +11,4 @@ wheels/
 
 # Tooling caches
 .mypy_cache/
+.pytest_cache/

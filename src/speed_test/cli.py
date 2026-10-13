@@ -22,6 +22,14 @@ class Measurement:
     elapsed: float
 
 
+@dataclass(frozen=True)
+class Summary:
+    requests: int
+    total_size: int
+    average_time: float
+    speed_mb_per_s: float
+
+
 def make_ssl_context(insecure: bool) -> ssl.SSLContext:
     """Проверяет сертификаты через системное хранилище ОС, как это делает браузер."""
     if insecure:
@@ -101,7 +109,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--timeout",
         type=positive_float,
         default=DEFAULT_TIMEOUT,
-        help=f"таймаут одного запроса в секундах (по умолчанию {DEFAULT_TIMEOUT:g})",
+        help=(
+            "таймаут ожидания данных от сервера в секундах; ограничивает паузу, "
+            f"а не длительность всей загрузки (по умолчанию {DEFAULT_TIMEOUT:g})"
+        ),
     )
     parser.add_argument(
         "-k",
@@ -112,13 +123,30 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    context = make_ssl_context(args.insecure)
-    print(f"Адрес: {args.url}")
-    print(f"Запросов: {args.count}\n")
+def summarize(measurements: list[Measurement]) -> Summary:
+    total_size = sum(m.size for m in measurements)
+    total_time = sum(m.elapsed for m in measurements)
+    return Summary(
+        requests=len(measurements),
+        total_size=total_size,
+        average_time=total_time / len(measurements),
+        speed_mb_per_s=total_size / total_time / BYTES_IN_MB if total_time else 0.0,
+    )
 
-    measurements: list[Measurement] = []
+
+def print_summary(summary: Summary, count: int) -> None:
+    print()
+    print(f"Успешных запросов:    {summary.requests}/{count}")
+    print(f"Среднее время:        {summary.average_time:.3f} с")
+    print(f"Скачано всего:        {summary.total_size / BYTES_IN_MB:.2f} МБ")
+    print(
+        f"Скорость:             {summary.speed_mb_per_s:.2f} МБ/с "
+        f"({summary.speed_mb_per_s * 8:.2f} Мбит/с)"
+    )
+
+
+def run(args: argparse.Namespace, measurements: list[Measurement]) -> None:
+    context = make_ssl_context(args.insecure)
     for number in range(1, args.count + 1):
         prefix = f"Запрос {number:>2}/{args.count}"
         try:
@@ -132,18 +160,24 @@ def main(argv: list[str] | None = None) -> int:
             f"за {measurement.elapsed:.3f} с"
         )
 
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    print(f"Адрес: {args.url}")
+    print(f"Запросов: {args.count}\n")
+
+    measurements: list[Measurement] = []
+    try:
+        run(args, measurements)
+    except KeyboardInterrupt:
+        print("\nПрервано.", file=sys.stderr)
+        if measurements:
+            print_summary(summarize(measurements), args.count)
+        return 130
+
     if not measurements:
         print("\nНи один запрос не выполнен успешно.", file=sys.stderr)
         return 1
 
-    total_size = sum(m.size for m in measurements)
-    total_time = sum(m.elapsed for m in measurements)
-    average_time = total_time / len(measurements)
-    speed = total_size / total_time / BYTES_IN_MB
-
-    print()
-    print(f"Успешных запросов:    {len(measurements)}/{args.count}")
-    print(f"Среднее время:        {average_time:.3f} с")
-    print(f"Скачано всего:        {total_size / BYTES_IN_MB:.2f} МБ")
-    print(f"Скорость:             {speed:.2f} МБ/с ({speed * 8:.2f} Мбит/с)")
+    print_summary(summarize(measurements), args.count)
     return 0
