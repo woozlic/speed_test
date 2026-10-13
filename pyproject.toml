@@ -1,0 +1,19 @@
+[project]
+name = "speed-test"
+version = "0.1.0"
+description = "Замер скорости интернета по скачиванию файла"
+readme = "README.md"
+authors = [
+    { name = "woozlic", email = "sampaccs@mail.ru" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "truststore>=0.10.5",
+]
+
+[project.scripts]
+speed-test = "speed_test:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"
